@@ -385,19 +385,29 @@
                 formData.append('files', file);
             });
 
-            // Calculate total size
+            // Calculate total size of all files
             let totalSize = 0;
             files.forEach(file => {
                 totalSize += file.size;
             });
 
+            // Store total size for progress calculation
+            let uploadedBytes = 0;
+
             const xhr = new XMLHttpRequest();
 
             // Update progress
             xhr.upload.addEventListener('progress', (e) => {
-                if (e.lengthComputable) {
-                    const percentComplete = Math.round((e.loaded / e.total) * 100);
-                    updateProgress(percentComplete, e.loaded, e.total);
+                if (e.lengthComputable && e.total > 0) {
+                    // Use the actual loaded bytes, but calculate percentage based on our known total size
+                    uploadedBytes = e.loaded;
+                    const percentComplete = Math.min(Math.round((uploadedBytes / totalSize) * 100), 100);
+                    updateProgress(percentComplete, uploadedBytes, totalSize);
+                } else if (e.loaded > 0) {
+                    // Fallback: if length not computable, estimate based on loaded bytes
+                    uploadedBytes = e.loaded;
+                    const estimatedPercent = Math.min(Math.round((uploadedBytes / totalSize) * 100), 99);
+                    updateProgress(estimatedPercent, uploadedBytes, totalSize);
                 }
             });
 
@@ -409,11 +419,12 @@
                     try {
                         const data = JSON.parse(xhr.responseText);
                         if (data.success) {
-                            progressText.textContent = 'Upload complete!';
-                            uploadStatus.textContent = `Successfully uploaded ${data.count} file(s)`;
+                            // Set to 100% only when actually complete
                             progressBar.style.width = '100%';
                             progressBar.textContent = '100%';
                             progressPercent.textContent = '100%';
+                            progressText.textContent = 'Upload complete!';
+                            uploadStatus.textContent = `Successfully uploaded ${data.count} file(s) - ${formatBytes(totalSize)}`;
                             
                             displayFiles(data.files);
                             loadStats();
@@ -458,25 +469,27 @@
                 showError('Upload was cancelled');
             });
 
+            // Show progress UI immediately
+            loading.classList.remove('active');
+            progressContainer.classList.add('active');
+            progressBar.style.width = '0%';
+            progressBar.textContent = '0%';
+            progressPercent.textContent = '0%';
+            progressText.textContent = `Uploading ${files.length} file(s)...`;
+            uploadStatus.textContent = `0 / ${formatBytes(totalSize)} (0%)`;
+
             // Start upload
             xhr.open('POST', `${API_URL}/api/upload/multiple`);
-            
-            // Show progress UI after a brief delay
-            setTimeout(() => {
-                loading.classList.remove('active');
-                progressContainer.classList.add('active');
-                progressText.textContent = `Uploading ${files.length} file(s)...`;
-                uploadStatus.textContent = `Total size: ${formatBytes(totalSize)}`;
-            }, 100);
-
             xhr.send(formData);
         }
 
         function updateProgress(percent, loaded, total) {
-            progressBar.style.width = percent + '%';
-            progressBar.textContent = percent + '%';
-            progressPercent.textContent = percent + '%';
-            uploadStatus.textContent = `${formatBytes(loaded)} / ${formatBytes(total)} (${percent}%)`;
+            // Ensure percent doesn't exceed 100% until upload is actually complete
+            const clampedPercent = Math.min(Math.max(percent, 0), 99);
+            progressBar.style.width = clampedPercent + '%';
+            progressBar.textContent = clampedPercent + '%';
+            progressPercent.textContent = clampedPercent + '%';
+            uploadStatus.textContent = `${formatBytes(loaded)} / ${formatBytes(total)} (${clampedPercent}%)`;
         }
 
         function formatBytes(bytes) {
