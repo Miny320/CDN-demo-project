@@ -208,6 +208,52 @@
             margin: 0 auto;
         }
 
+        .progress-container {
+            margin-top: 20px;
+            display: none;
+        }
+
+        .progress-container.active {
+            display: block;
+        }
+
+        .progress-info {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 14px;
+            color: #666;
+        }
+
+        .progress-bar-wrapper {
+            width: 100%;
+            height: 24px;
+            background: #e5e7eb;
+            border-radius: 12px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #3b82f6 0%, #1e40af 100%);
+            border-radius: 12px;
+            transition: width 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 12px;
+            font-weight: 600;
+            min-width: 0;
+        }
+
+        .upload-status {
+            margin-top: 10px;
+            font-size: 14px;
+            color: #666;
+        }
+
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
@@ -246,7 +292,18 @@
 
         <div class="loading" id="loading">
             <div class="spinner"></div>
-            <p style="margin-top: 10px;">Uploading...</p>
+            <p style="margin-top: 10px;">Preparing upload...</p>
+        </div>
+
+        <div class="progress-container" id="progressContainer">
+            <div class="progress-info">
+                <span id="progressText">Uploading...</span>
+                <span id="progressPercent">0%</span>
+            </div>
+            <div class="progress-bar-wrapper">
+                <div class="progress-bar" id="progressBar" style="width: 0%">0%</div>
+            </div>
+            <div class="upload-status" id="uploadStatus"></div>
         </div>
 
         <div class="error" id="error"></div>
@@ -283,6 +340,11 @@
         const fileList = document.getElementById('fileList');
         const loading = document.getElementById('loading');
         const error = document.getElementById('error');
+        const progressContainer = document.getElementById('progressContainer');
+        const progressBar = document.getElementById('progressBar');
+        const progressPercent = document.getElementById('progressPercent');
+        const progressText = document.getElementById('progressText');
+        const uploadStatus = document.getElementById('uploadStatus');
 
         // Click to upload
         uploadArea.addEventListener('click', () => fileInput.click());
@@ -310,10 +372,11 @@
             uploadFiles(files);
         });
 
-        async function uploadFiles(files) {
+        function uploadFiles(files) {
             if (files.length === 0) return;
 
             loading.classList.add('active');
+            progressContainer.classList.remove('active');
             error.classList.remove('active');
             fileInput.value = '';
 
@@ -322,25 +385,106 @@
                 formData.append('files', file);
             });
 
-            try {
-                const response = await fetch(`${API_URL}/api/upload/multiple`, {
-                    method: 'POST',
-                    body: formData
-                });
+            // Calculate total size
+            let totalSize = 0;
+            files.forEach(file => {
+                totalSize += file.size;
+            });
 
-                const data = await response.json();
+            const xhr = new XMLHttpRequest();
 
-                if (response.ok) {
-                    displayFiles(data.files);
-                    loadStats();
-                } else {
-                    showError(data.error || 'Upload failed');
+            // Update progress
+            xhr.upload.addEventListener('progress', (e) => {
+                if (e.lengthComputable) {
+                    const percentComplete = Math.round((e.loaded / e.total) * 100);
+                    updateProgress(percentComplete, e.loaded, e.total);
                 }
-            } catch (err) {
-                showError('Network error: ' + err.message);
-            } finally {
+            });
+
+            // Handle completion
+            xhr.addEventListener('load', () => {
                 loading.classList.remove('active');
-            }
+                
+                if (xhr.status === 200) {
+                    try {
+                        const data = JSON.parse(xhr.responseText);
+                        if (data.success) {
+                            progressText.textContent = 'Upload complete!';
+                            uploadStatus.textContent = `Successfully uploaded ${data.count} file(s)`;
+                            progressBar.style.width = '100%';
+                            progressBar.textContent = '100%';
+                            progressPercent.textContent = '100%';
+                            
+                            displayFiles(data.files);
+                            loadStats();
+                            
+                            // Hide progress after a delay
+                            setTimeout(() => {
+                                progressContainer.classList.remove('active');
+                                progressBar.style.width = '0%';
+                                progressBar.textContent = '0%';
+                                progressPercent.textContent = '0%';
+                            }, 2000);
+                        } else {
+                            showError(data.error || 'Upload failed');
+                            progressContainer.classList.remove('active');
+                        }
+                    } catch (err) {
+                        showError('Failed to parse server response');
+                        progressContainer.classList.remove('active');
+                    }
+                } else {
+                    try {
+                        const data = JSON.parse(xhr.responseText);
+                        showError(data.error || `Upload failed with status ${xhr.status}`);
+                    } catch (err) {
+                        showError(`Upload failed with status ${xhr.status}`);
+                    }
+                    progressContainer.classList.remove('active');
+                }
+            });
+
+            // Handle errors
+            xhr.addEventListener('error', () => {
+                loading.classList.remove('active');
+                progressContainer.classList.remove('active');
+                showError('Network error occurred during upload');
+            });
+
+            // Handle abort
+            xhr.addEventListener('abort', () => {
+                loading.classList.remove('active');
+                progressContainer.classList.remove('active');
+                showError('Upload was cancelled');
+            });
+
+            // Start upload
+            xhr.open('POST', `${API_URL}/api/upload/multiple`);
+            
+            // Show progress UI after a brief delay
+            setTimeout(() => {
+                loading.classList.remove('active');
+                progressContainer.classList.add('active');
+                progressText.textContent = `Uploading ${files.length} file(s)...`;
+                uploadStatus.textContent = `Total size: ${formatBytes(totalSize)}`;
+            }, 100);
+
+            xhr.send(formData);
+        }
+
+        function updateProgress(percent, loaded, total) {
+            progressBar.style.width = percent + '%';
+            progressBar.textContent = percent + '%';
+            progressPercent.textContent = percent + '%';
+            uploadStatus.textContent = `${formatBytes(loaded)} / ${formatBytes(total)} (${percent}%)`;
+        }
+
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
         }
 
         function displayFiles(files) {
