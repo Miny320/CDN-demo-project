@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple CDN - File Upload</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #3b82f6 0%, #1e40af 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        .subtitle {
+            color: #666;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .upload-area {
+            border: 3px dashed #3b82f6;
+            border-radius: 15px;
+            padding: 40px;
+            text-align: center;
+            margin-bottom: 20px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            background: #eff6ff;
+        }
+
+        .upload-area:hover {
+            border-color: #1e40af;
+            background: #dbeafe;
+        }
+
+        .upload-area.dragover {
+            border-color: #1e40af;
+            background: #bfdbfe;
+            transform: scale(1.02);
+        }
+
+        .upload-icon {
+            font-size: 48px;
+            margin-bottom: 10px;
+            font-weight: 300;
+            color: #3b82f6;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #3b82f6 0%, #1e40af 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: transform 0.2s;
+            margin: 10px 5px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+        }
+
+        .file-list {
+            margin-top: 30px;
+        }
+
+        .file-item {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .file-info {
+            flex: 1;
+        }
+
+        .file-name {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 5px;
+        }
+
+        .file-meta {
+            font-size: 12px;
+            color: #666;
+        }
+
+        .file-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .file-link {
+            color: #3b82f6;
+            text-decoration: none;
+            font-size: 14px;
+        }
+
+        .file-link:hover {
+            text-decoration: underline;
+        }
+
+        .preview {
+            margin-top: 10px;
+            max-width: 200px;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .preview img {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        .stats {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 30px;
+        }
+
+        .stats h3 {
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+        }
+
+        .stat-item {
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: #3b82f6;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .loading.active {
+            display: block;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3b82f6;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error {
+            background: #fee;
+            color: #c33;
+            padding: 10px;
+            border-radius: 8px;
+            margin-top: 10px;
+            display: none;
+        }
+
+        .error.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Simple CDN</h1>
+        <p class="subtitle">Upload and store your images and files</p>
+
+        <div class="upload-area" id="uploadArea">
+            <div class="upload-icon">+</div>
+            <p><strong>Click to upload</strong> or drag and drop</p>
+            <p style="color: #666; font-size: 14px; margin-top: 5px;">Supports images, PDFs, and other files</p>
+            <input type="file" id="fileInput" multiple accept="image/*,application/pdf,text/*,application/json,application/zip">
+        </div>
+
+        <div style="text-align: center;">
+            <button class="btn" onclick="document.getElementById('fileInput').click()">Select Files</button>
+            <button class="btn btn-secondary" onclick="loadStats()">Refresh Stats</button>
+        </div>
+
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p style="margin-top: 10px;">Uploading...</p>
+        </div>
+
+        <div class="error" id="error"></div>
+
+        <div class="file-list" id="fileList"></div>
+
+        <div class="stats">
+            <h3>Storage Statistics</h3>
+            <div class="stats-grid" id="statsGrid">
+                <div class="stat-item">
+                    <div class="stat-value" id="imageCount">-</div>
+                    <div class="stat-label">Images</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="fileCount">-</div>
+                    <div class="stat-label">Files</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="optimizedCount">-</div>
+                    <div class="stat-label">Optimized</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="totalSize">-</div>
+                    <div class="stat-label">Total Size (MB)</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = window.location.origin;
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const fileList = document.getElementById('fileList');
+        const loading = document.getElementById('loading');
+        const error = document.getElementById('error');
+
+        // Click to upload
+        uploadArea.addEventListener('click', () => fileInput.click());
+
+        // Drag and drop
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            const files = Array.from(e.dataTransfer.files);
+            uploadFiles(files);
+        });
+
+        // File input change
+        fileInput.addEventListener('change', (e) => {
+            const files = Array.from(e.target.files);
+            uploadFiles(files);
+        });
+
+        async function uploadFiles(files) {
+            if (files.length === 0) return;
+
+            loading.classList.add('active');
+            error.classList.remove('active');
+            fileInput.value = '';
+
+            const formData = new FormData();
+            files.forEach(file => {
+                formData.append('files', file);
+            });
+
+            try {
+                const response = await fetch(`${API_URL}/api/upload/multiple`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    displayFiles(data.files);
+                    loadStats();
+                } else {
+                    showError(data.error || 'Upload failed');
+                }
+            } catch (err) {
+                showError('Network error: ' + err.message);
+            } finally {
+                loading.classList.remove('active');
+            }
+        }
+
+        function displayFiles(files) {
+            files.forEach(file => {
+                const item = document.createElement('div');
+                item.className = 'file-item';
+                
+                const isImage = file.mimetype.startsWith('image/');
+                const preview = isImage 
+                    ? `<div class="preview"><img src="${API_URL}${file.path}" alt="${file.originalName}"></div>`
+                    : '';
+
+                item.innerHTML = `
+                    <div class="file-info">
+                        <div class="file-name">${file.originalName}</div>
+                        <div class="file-meta">
+                            ${(file.size / 1024).toFixed(2)} KB • ${file.mimetype}
+                            ${file.metadata ? ` • ${file.metadata.width}x${file.metadata.height}` : ''}
+                        </div>
+                        ${preview}
+                    </div>
+                    <div class="file-actions">
+                        <a href="${API_URL}${file.path}" target="_blank" class="file-link">View</a>
+                        ${file.optimizedPath ? `<a href="${API_URL}${file.optimizedPath}" target="_blank" class="file-link">Optimized</a>` : ''}
+                    </div>
+                `;
+                
+                fileList.insertBefore(item, fileList.firstChild);
+            });
+        }
+
+        async function loadStats() {
+            try {
+                const response = await fetch(`${API_URL}/api/upload/stats`);
+                const data = await response.json();
+                
+                document.getElementById('imageCount').textContent = data.images.count;
+                document.getElementById('fileCount').textContent = data.files.count;
+                document.getElementById('optimizedCount').textContent = data.optimized.count;
+                document.getElementById('totalSize').textContent = 
+                    (parseFloat(data.images.totalSizeMB) + parseFloat(data.files.totalSizeMB)).toFixed(2);
+            } catch (err) {
+                console.error('Failed to load stats:', err);
+            }
+        }
+
+        function showError(message) {
+            error.textContent = message;
+            error.classList.add('active');
+            setTimeout(() => {
+                error.classList.remove('active');
+            }, 5000);
+        }
+
+        // Load stats on page load
+        loadStats();
+    </script>
+</body>
+</html>
+
